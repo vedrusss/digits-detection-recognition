@@ -16,8 +16,8 @@ class Recognizer:
     def __init__(self, fw_type, model_path=None, train_data=None):
         self._recognizer = self._init_cv(train_data) if fw_type == 'opencv' else \
                            self._init_sk(model_path, train_data)
-        self.__call__ = self._predict_cv if fw_type == 'opencv' else self._predict_sk
-
+        self.predict = self._predict_cv if fw_type == 'opencv' else self._predict_sk
+    
     def _init_cv(self, train_data):
         svc = cv2.ml.SVM_create()
         svc.setType(svm_params['svm_type'])
@@ -34,7 +34,8 @@ class Recognizer:
         if train_data:
             print('Training sklearn SVM digits recognizer...')
             svc = svm.SVC(kernel='linear')
-            svc.fit(train_data['images'], train_data['labels'])
+            features = [image.ravel() for image in train_data['images']]
+            svc.fit(features, train_data['labels'])
             with open(model_path, 'wb') as f:
                 f.write(pickle.dumps(svc))
         else:
@@ -44,17 +45,18 @@ class Recognizer:
         return svc
 
     def _predict_cv(self, imgs):
-        test = [np.float32(i.resize(SAMPLE_SIZE)).ravel() for i in imgs]
+        #test = [np.float32(i.resize(SAMPLE_SIZE)).ravel() for i in imgs]
         rows = SAMPLE_SIZE[0]
         cols = SAMPLE_SIZE[1]
-        testdata = preprocess(test, rows, cols).reshape(-1, bin_n * 4)
+        testdata = preprocess(imgs, rows, cols).reshape(-1, bin_n * 4)
         res = self._recognizer.predict(testdata)[1]
         labels = res.astype(np.uint8).ravel()
         return labels
 
     def _predict_sk(self, imgs):
-        test = [np.float32(i.resize(SAMPLE_SIZE)).ravel() for i in imgs]
-        labels = self._recognizer.predict(test)
+        #test = [np.float32(i.resize(SAMPLE_SIZE)).ravel() for i in imgs]
+        features = [image.ravel() for image in imgs]
+        labels = self._recognizer.predict(features)
         return labels
 
 
@@ -109,8 +111,44 @@ def annotate_recognition(im, regions, labels, font, color=255):
             (x+w-size, y+h-size), str(labels[idx]), font=font, fill=color)
     return clone
 
+def evaluate(predictions, groundtruth):
+    tps, amount = {}, {}
+    for p, g in zip(predictions, groundtruth):
+        if not g in tps:
+            tps[g] = 0
+            amount[g] = 0
+        if p == g: tps[g] += 1
+        amount[g] += 1
+
+    tps = {g : float(tps[g])/amount[g] for g in tps.keys()}
+    return tps
+
+from load_labels import encode_labels, prepare_image, load_data
 
 if __name__ == '__main__':
+    files, labels = load_data(data_lst='/data/tasks/ocr_pipeline/calculator_font/digits_and_signs/train-train.lst',
+                               data_root='/data/tasks/ocr_pipeline/calculator_font/digits_and_signs', verbose=True)
+    images = [prepare_image(fn, (28, 28)) for fn in files]
+    elabels, mapping = encode_labels(labels)
+    test_files, test_labels = load_data(data_lst='/data/tasks/ocr_pipeline/calculator_font/digits_and_signs/train-test.lst',
+                               data_root='/data/tasks/ocr_pipeline/calculator_font/digits_and_signs', verbose=True)
+    test_images = [prepare_image(fn, (28, 28)) for fn in test_files]
+    test_elabels, test_mapping = encode_labels(test_labels)
+    framework = "sk" # "opencv"
+    rec = Recognizer(framework, model_path=f'digits_{framework}.pkl')#, train_data={'images':images, 'labels':elabels})
+    print("Trained")
+    #images = [prepare_image(fn, (28, 28)) for fn in files]
+    predictions = rec.predict(test_images)
+    for prediction, elabel, glabel in zip(predictions, test_elabels, test_labels):
+        label = test_mapping[prediction]
+        #print(f"prediction: {prediction}, elabel: {elabel} || label: {label}, glabel: {glabel}")
+    tps = evaluate(predictions, test_elabels)
+    print("Evaluation results:")
+    for elabel in sorted(tps.keys()):
+        label = test_mapping[elabel]
+        print(f"{label} : {tps[elabel]}")
+    quit()
+
     LABEL_FILE = 'MNIST/train-labels-idx1-ubyte'
     IMAGE_FILE = 'MNIST/train-images-idx3-ubyte'
     TRAIN_SIZE = 10000

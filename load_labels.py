@@ -1,10 +1,47 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+__author__ = "Alexey Antonenko, vedrusss@gmail.com"
 
 import struct
 import numpy as np
 from PIL import Image
 import argparse
+import cv2
+from os.path import join as opj
+
+def load_data(data_lst, data_root, verbose=False):
+    images = []
+    labels = []
+    lines = open(data_lst).read().splitlines()
+    for line in lines:
+        path, label = line.split()
+        images.append(opj(data_root, path))
+        labels.append(label)
+    if verbose:
+        print("Data stats:")
+        for l in sorted(list(set(labels))):
+            amount = len([el for el in labels if el == l])
+            print(f"{l} : {amount}")
+    return images, labels
+
+#def resize_keep_aspect_ratio(image, size):
+
+def encode_labels(labels):
+    encoded = []
+    mapping = {}
+    existing = []
+    for l in labels:
+        if not l in existing:
+            existing.append(l)
+        ind = existing.index(l)
+        encoded.append(ind)
+        if not ind in mapping:
+            mapping[ind] = l
+    return encoded, mapping
+
+def prepare_image(filename, size=(28, 28)):
+    image = cv2.imread(filename)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    image = cv2.resize(image, size)
+    return image
 
 def get_labels(file):
     magic, num = struct.unpack(">II", file.read(8))
