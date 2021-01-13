@@ -3,8 +3,14 @@ import cv2
 from random import shuffle
 import uuid
 
+def get_mouse_position(event, x, y, flags, param):
+    if event == cv2.EVENT_LBUTTONDOWN:
+        print(f"x: {x}, y: {y}")
+
 def display_frames(cap, fnum):
     win = 'win'
+    cv2.namedWindow(win)
+    cv2.setMouseCallback(win, get_mouse_position)
     cap.set(cv2.CAP_PROP_POS_FRAMES, fnum)
     res, frame = cap.read()
     while res:
@@ -26,6 +32,8 @@ def extract_save_crops(cap, box, splits, frame_nums, dst_folder):
             x0 = 0
             for x in splits:
                 x1 = x - box[0]
+                if x1 - x0 <= 0:
+                    continue
                 s_crop = crop[:, x0:x1, :]
                 x0 = x1
                 dst_split = make_dst_split_name(dst_folder, 'splits', x1, uid)
