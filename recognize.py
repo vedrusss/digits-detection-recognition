@@ -28,6 +28,7 @@ class Recognizer:
             if train_data:
                 elabels, self._mapping_from_labels, self._mapping_to_labels = \
                     data.encode_labels(train_data['labels'])
+                images = train_data['images']
             else:
                 elabels = None
                 self._mapping_to_labels = {}
@@ -70,9 +71,8 @@ class Recognizer:
         return cnn
 
     def _init_snn(self, model_path, image_files, labels):
-        if train_data:
+        if image_files and labels:
             print('Training shallow NN..')
-            labels = train_data['labels']
             num_classes = len(set(labels))
             labels = [data.label_to_binary(label, num_classes) for label in labels]
             layers = ({'activation' : 'Tanh'   , 'size' : 24},
@@ -83,7 +83,7 @@ class Recognizer:
             responses = np.array(labels, dtype=np.float).T
             shallowNN = LLayerNN(traindata.shape[0], layers, num_classes)
             traindata = shallowNN.normalize(traindata)
-            shallowNN.train(traindata, responses, minibatchSize=traindata.shape[1], epochsNum = 50000)
+            shallowNN.train(traindata, responses, minibatchSize=traindata.shape[1], alfa=0.03, epochsNum = 30000)
             shallowNN.save(model_path)
         else:
             print('Loading shallow NN')
@@ -138,7 +138,7 @@ class Recognizer:
 if __name__ == '__main__':
     import sys
 
-    use_trained = True
+    use_trained = False
     data_stats = True
     keep_aspect_ratio = False
 
@@ -149,7 +149,7 @@ if __name__ == '__main__':
                  4: {'train_lst':'train_12345empty', 'test_lst':'test_12345empty'}}
         
         chosen_case = 1
-        framework = "cnn" #  "opencv" "sk" "snn" "cnn"
+        framework = "snn" #  "opencv" "sk" "snn" "cnn"
         data_root = '/data/tasks/ocr_pipeline/calculator_font/digits_and_signs/digits_only'
         data_name = os.path.split(data_root)[-1]
         train_lst, test_lst = cases[chosen_case]['train_lst'], cases[chosen_case]['test_lst']
