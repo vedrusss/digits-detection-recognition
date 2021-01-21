@@ -31,6 +31,8 @@ def compare(boxes, gt_objects):
 def evaluate_detector(detector, test_data):
     all_TPs, all_FNs = defaultdict(int), defaultdict(int)
     all_FPs = 0
+    detections = 0
+    all_gt_objects = defaultdict(int)
     i = 0
     for im_path, ann_path in test_data:
         image = cv2.imread(im_path)
@@ -39,31 +41,37 @@ def evaluate_detector(detector, test_data):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         boxes = detector(image)
         TPs, FNs, FPs = compare(boxes, objects)
+        detections += len(boxes)
+        for gt_obj in objects:
+            all_gt_objects[gt_obj['label']] += 1
         for label in TPs.keys():
             all_TPs[label] += TPs[label]
             all_FNs[label] += FNs[label]
         all_FPs += FPs
         i += 1
-        if i > 100:
-            break
+
+        #if i > 100:
+        #    break
     
     pres, recs, f1ss = defaultdict(int), defaultdict(int), defaultdict(int)
     for label in all_TPs.keys():
-        pres[label], recs[label], f1ss[label] = pre_rec_f1s(all_TPs[label], all_FNs[label], all_FPs)
-    i_pre, i_rec, i_f1s = pre_rec_f1s(sum(all_TPs.values()), sum(all_FNs.values()), all_FPs)
+        pres[label], recs[label], f1ss[label] = pre_rec_f1s(all_TPs[label], all_FNs[label],
+                                                            all_FPs, detections, all_gt_objects[label])
+    i_pre, i_rec, i_f1s = pre_rec_f1s(sum(all_TPs.values()), sum(all_FNs.values()),
+                                      all_FPs, detections, sum(all_gt_objects.values()))
     stats = {}
     stats['per_label'] = (pres, recs, f1ss)
     stats['integral'] = (i_pre, i_rec, i_f1s)
     results = (all_TPs, all_FNs, all_FPs)
     return stats, results
     
-def pre_rec_f1s(tps, fns, fps):
-    pre = tps / float(tps + fps) if tps + fps > 0 else None
-    rec = tps / float(tps + fns) if tps + fns > 0 else None
+def pre_rec_f1s(tps, fns, fps, all_dets, gt_positives):
+    pre = tps / float(all_dets) if all_dets > 0 else None
+    rec = tps / float(gt_positives) if gt_positives > 0 else None
     f1s = 2. * pre * rec / (pre + rec) if pre and rec else None
     return pre, rec, f1s
 
-def has_intersection(box, boxes, iou_threhold=0.3):
+def has_intersection(box, boxes, iou_threhold=0.5):
     for b in boxes:
         IoU = iou(box, b)
         #print(box, b, IoU, iou_threhold)
@@ -102,7 +110,7 @@ def main(args):
     image_files = scan_files(args.images)
     annotations = scan_files(args.annotations)
     test_data = [[im_path, annotations[name]] for name, im_path in image_files.items() if name in annotations]
-    assert(os.path.isfile(args.detector_model)),f"Cannot find specified model {args.detector_model}"
+    assert(os.path.isfile(args.detector_model)), f"Cannot find specified model {args.detector_model}"
     detector = Detector(args.detector_model)
     stats, results = evaluate_detector(detector, test_data)
     #  print stats
@@ -112,7 +120,7 @@ def main(args):
         print(f"{label}\tprecision: {metrics[0][label]}, recall: {metrics[1][label]}, f1 score: {metrics[2][label]}")
     print("--- 'integral' ---")
     metrics = stats['integral']
-    print(f"{label}\tprecision: {metrics[0]}, recall: {metrics[1]}, f1 score: {metrics[2]}")
+    print(f"precision: {metrics[0]}, recall: {metrics[1]}, f1 score: {metrics[2]}")
 
 if __name__ == "__main__":
     main(parse_args())

@@ -1,3 +1,4 @@
+__author__ = "Alexey Antonenko, vedrusss@gmail.com"
 import argparse
 from os import listdir, makedirs
 from os.path import join as opj
