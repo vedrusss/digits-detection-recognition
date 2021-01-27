@@ -4,16 +4,22 @@ import argparse
 import cv2
 from utilities import get_base_name, show_results_break
 from PIL import Image, ImageDraw
-
+import dlib
 
 class Detector:
-    def __init__(self, xml_graph_file):
-        self._detector = cv2.CascadeClassifier(xml_graph_file)
+    def __init__(self, model_file, opencv=True):
+        self._opencv = opencv
+        self._detector = cv2.CascadeClassifier(model_file) if opencv \
+            else dlib.simple_object_detector(model_file)
 
     def __call__(self, np_image):
-        if len(np_image.shape) > 3 and np_image.shape[2] > 1:
-            np_image = cv2.cvtColor(np_image, cv2.COLOR_BGR2GRAY)
-        digits = self._detector.detectMultiScale(np_image)
+        if self._opencv:
+            if len(np_image.shape) > 3 and np_image.shape[2] > 1:
+                np_image = cv2.cvtColor(np_image, cv2.COLOR_BGR2GRAY)
+            digits = self._detector.detectMultiScale(np_image, minSize=(6, 6), maxSize=(48, 48))
+        else:
+            digits = self._detector(cv2.cvtColor(np_image, cv2.COLOR_BGR2RGB))
+            digits = [(b.left(), b.top(), b.width(), b.height()) for b in digits]
         return digits
 
 

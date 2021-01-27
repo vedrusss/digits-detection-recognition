@@ -40,6 +40,10 @@ def evaluate_detector(detector, test_data):
         objects = parse_annotation(ann_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         boxes = detector(image)
+        #print(im_path)
+        #print('boxes', boxes)
+        #print('gt', objects)
+        #quit()
         TPs, FNs, FPs = compare(boxes, objects)
         detections += len(boxes)
         for gt_obj in objects:
@@ -50,8 +54,7 @@ def evaluate_detector(detector, test_data):
         all_FPs += FPs
         i += 1
 
-        #if i > 100:
-        #    break
+        #if i > 100: break
     
     pres, recs, f1ss = defaultdict(int), defaultdict(int), defaultdict(int)
     for label in all_TPs.keys():
@@ -71,7 +74,7 @@ def pre_rec_f1s(tps, fns, fps, all_dets, gt_positives):
     f1s = 2. * pre * rec / (pre + rec) if pre and rec else None
     return pre, rec, f1s
 
-def has_intersection(box, boxes, iou_threhold=0.5):
+def has_intersection(box, boxes, iou_threhold=0.6):
     for b in boxes:
         IoU = iou(box, b)
         #print(box, b, IoU, iou_threhold)
@@ -111,7 +114,8 @@ def main(args):
     annotations = scan_files(args.annotations)
     test_data = [[im_path, annotations[name]] for name, im_path in image_files.items() if name in annotations]
     assert(os.path.isfile(args.detector_model)), f"Cannot find specified model {args.detector_model}"
-    detector = Detector(args.detector_model)
+    opencv_model = args.detector_model.endswith('.xml')
+    detector = Detector(args.detector_model, opencv_model)
     stats, results = evaluate_detector(detector, test_data)
     #  print stats
     print("--- 'per_label' ---")
