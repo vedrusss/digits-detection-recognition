@@ -13,18 +13,18 @@ scan_files = lambda folder: {base_name(name): os.path.join(folder, name)
                              for name in os.listdir(folder) if os.path.isfile(os.path.join(folder, name))}
 
 def compare(boxes, gt_objects):
-    to_ltrb = lambda xywh: (xywh[0], xywh[1], xywh[0]+xywh[2], xywh[1]+xywh[3])
+    #to_ltrb = lambda xywh: (xywh[0], xywh[1], xywh[0]+xywh[2], xywh[1]+xywh[3])
     TPs, FNs = defaultdict(int), defaultdict(int)
     for obj in gt_objects:
         label, ltrb = obj['label'], obj['box']
-        if has_intersection(ltrb, [to_ltrb(box) for box in boxes]):
+        if has_intersection(ltrb, [box for box in boxes]):
             TPs[label] += 1
         else:
             FNs[label] += 1
     gt_boxes = [obj['box'] for obj in gt_objects]
     FPs = 0
-    for xywh in boxes:
-        if not has_intersection(to_ltrb(xywh), gt_boxes):
+    for ltrb in boxes:
+        if not has_intersection(ltrb, gt_boxes):
             FPs += 1
     return TPs, FNs, FPs
 
@@ -38,12 +38,7 @@ def evaluate_detector(detector, test_data):
         image = cv2.imread(im_path)
         assert(image is not None), f"Cannot read {im_path}"
         objects = parse_annotation(ann_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         boxes = detector(image)
-        #print(im_path)
-        #print('boxes', boxes)
-        #print('gt', objects)
-        #quit()
         TPs, FNs, FPs = compare(boxes, objects)
         detections += len(boxes)
         for gt_obj in objects:
@@ -54,7 +49,7 @@ def evaluate_detector(detector, test_data):
         all_FPs += FPs
         i += 1
 
-        #if i > 100: break
+        if i > 100: break
     
     pres, recs, f1ss = defaultdict(int), defaultdict(int), defaultdict(int)
     for label in all_TPs.keys():
@@ -103,8 +98,8 @@ def parse_args():
                         help='Folders with digit images')
     parser.add_argument('-a', '--annotations', type=str, required=True, 
                         help='Folder annotations')
-    parser.add_argument('-dm','--detector_model', type=str, default='models/cascade.xml',
-                        help='Detector model file')
+    parser.add_argument('-dm','--detector_models', type=str, nargs='+',
+                        help='Detector model file(-s)')
     parser.add_argument('-o', '--output', type=str, default=None,
                         help="Where to store montages for analysis")
     return parser.parse_args()
@@ -113,15 +108,15 @@ def main(args):
     image_files = scan_files(args.images)
     annotations = scan_files(args.annotations)
     test_data = [[im_path, annotations[name]] for name, im_path in image_files.items() if name in annotations]
-    assert(os.path.isfile(args.detector_model)), f"Cannot find specified model {args.detector_model}"
-    opencv_model = args.detector_model.endswith('.xml')
-    detector = Detector(args.detector_model, opencv_model)
+    
+    opencv_model = False # args.detector_models.endswith('.xml')
+    detector = Detector(args.detector_models, opencv_model, resize_factor=2.)
     stats, results = evaluate_detector(detector, test_data)
     #  print stats
-    print("--- 'per_label' ---")
-    metrics = stats['per_label']
-    for label in metrics[0].keys():
-        print(f"{label}\tprecision: {metrics[0][label]}, recall: {metrics[1][label]}, f1 score: {metrics[2][label]}")
+    #print("--- 'per_label' ---")
+    #metrics = stats['per_label']
+    #for label in metrics[0].keys():
+    #    print(f"{label}\tprecision: {metrics[0][label]}, recall: {metrics[1][label]}, f1 score: {metrics[2][label]}")
     print("--- 'integral' ---")
     metrics = stats['integral']
     print(f"precision: {metrics[0]}, recall: {metrics[1]}, f1 score: {metrics[2]}")

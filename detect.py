@@ -7,10 +7,17 @@ from PIL import Image, ImageDraw
 import dlib
 
 class Detector:
-    def __init__(self, model_file, opencv=True):
+    def __init__(self, detector_model_files, opencv=True, resize_factor=1.):
+        self._resize_factor = resize_factor
         self._opencv = opencv
-        self._detector = cv2.CascadeClassifier(model_file) if opencv \
-            else dlib.simple_object_detector(model_file)
+        if opencv:
+            self._detector = cv2.CascadeClassifier(detector_model_files[0])
+        else:
+            self._simple_detectors = []
+            for filename in detector_model_files:
+                dlib_detector = dlib.simple_object_detector(filename)
+                self._simple_detectors.append(dlib_detector)
+            self._multidetector = dlib.simple_object_detector(self._simple_detectors)
 
     def __call__(self, np_image):
         if self._opencv:
@@ -18,8 +25,26 @@ class Detector:
                 np_image = cv2.cvtColor(np_image, cv2.COLOR_BGR2GRAY)
             digits = self._detector.detectMultiScale(np_image, minSize=(6, 6), maxSize=(48, 48))
         else:
-            digits = self._detector(cv2.cvtColor(np_image, cv2.COLOR_BGR2RGB))
-            digits = [(b.left(), b.top(), b.width(), b.height()) for b in digits]
+            np_image = cv2.cvtColor(np_image, cv2.COLOR_BGR2RGB)
+            if self._resize_factor != 1.:
+                np_image = cv2.resize(np_image, dsize=None, fx=self._resize_factor, fy=self._resize_factor)
+            
+            #for d in self._simple_detectors:
+            #    r = d(np_image)
+            #    print('s', r)
+            boxes = self._multidetector(np_image)
+            #print("Multi result:", boxes)
+        
+            #dlib_boxes, dlib_scores, dlib_inds = self._multidetector.run_multiple(self._simple_detectors, np_image)
+            #print("Run multiple", dlib_boxes, dlib_scores, dlib_inds)
+        
+            digits = [(b.left(), b.top(), b.right(), b.bottom()) for b in boxes]
+
+            digits = [ (int(b[0]/self._resize_factor), 
+                        int(b[1]/self._resize_factor),
+                        int(b[2]/self._resize_factor),
+                        int(b[3]/self._resize_factor)) for b in digits]
+
         return digits
 
 

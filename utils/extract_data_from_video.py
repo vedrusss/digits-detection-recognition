@@ -68,7 +68,7 @@ def parse_args():
     parser.add_argument('-b', '--box', type=int, nargs=4, required=True, 
                         help='Box left, top, right, bottom coordinates to crop from the frame')
     parser.add_argument('-s', '--splits', type=int, nargs=4, default=None, help='Split crop by X coordinates')
-    parser.add_argument('-n', '--num_frames', type=int, default=None, help="Amount of frames to extract (all by default)")
+    parser.add_argument('-n', '--num_frames', type=int, default=200, help="Amount of frames to extract (all by default)")
     parser.add_argument('-o', '--output', type=str, required=True, help="Folder to save crops")
     parser.add_argument('-d', '--display', type=int, default=None, help="Just display frames from specified number")
     return parser.parse_args()

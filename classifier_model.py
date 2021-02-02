@@ -7,7 +7,6 @@ import torch.optim as optim
 import numpy as np
 import torchvision
 from torchvision import datasets, models, transforms
-import matplotlib.pyplot as plt
 import time
 import os
 import copy
@@ -168,6 +167,11 @@ def set_parameter_requires_grad(model, feature_extracting):
 ####  API  ####
 
 def initialize_cnn_model(num_labels=None, model_path=None):
+    if model_path:
+        assert(isinstance(model_path, str)), "Wrong model path provided"
+    if num_labels:
+        assert(isinstance(num_labels, int)), "Wrong labels amount provided"
+    assert(num_labels or model_path), "Either model path or labels amount must be provided"
     # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
     model_name = "lenet" # "squeezenet"
     # Number of classes in the dataset
@@ -207,7 +211,7 @@ def test_cnn_model(model_ft, cv_images, verbose=False):
         label_ind = out.argmax()
         label_score = out[label_ind]
         label = model_ft.idx_to_label[label_ind]
-        results.append(label_ind)
+        results.append((label_ind, label, label_score))
     return results
 
 def train_cnn_model(model_ft, train_data_root, val_data_root):
