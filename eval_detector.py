@@ -7,63 +7,70 @@ import cv2
 import numpy as np
 from collections import defaultdict
 from detect import Detector
+from detect_recognize import DigitsDetector
 
 base_name = lambda path: '.'.join(os.path.split(path)[-1].split('.')[:-1])
 scan_files = lambda folder: {base_name(name): os.path.join(folder, name)
                              for name in os.listdir(folder) if os.path.isfile(os.path.join(folder, name))}
 
-def compare(boxes, gt_objects):
-    #to_ltrb = lambda xywh: (xywh[0], xywh[1], xywh[0]+xywh[2], xywh[1]+xywh[3])
+def compare(detections, gt_objects):
     TPs, FNs = defaultdict(int), defaultdict(int)
     for obj in gt_objects:
         label, ltrb = obj['label'], obj['box']
-        if has_intersection(ltrb, [box for box in boxes]):
+        boxes = [d['box'] for d in detections if d['label'] is None or d['label'] == label]
+        if has_intersection(ltrb, boxes):
             TPs[label] += 1
         else:
             FNs[label] += 1
-    gt_boxes = [obj['box'] for obj in gt_objects]
-    FPs = 0
-    for ltrb in boxes:
-        if not has_intersection(ltrb, gt_boxes):
-            FPs += 1
+    FPs = defaultdict(int)
+    for d in detections:
+        label, box = d['label'], d['box']
+        gt_boxes = [obj['box'] for obj in gt_objects if label is None or obj['label'] == label]
+        if label is None:
+            label = 'none'
+        if not has_intersection(box, gt_boxes):
+            FPs[label] += 1
     return TPs, FNs, FPs
 
-def evaluate_detector(detector, test_data):
-    all_TPs, all_FNs = defaultdict(int), defaultdict(int)
-    all_FPs = 0
-    detections = 0
-    all_gt_objects = defaultdict(int)
+def evaluate_detector(detector, test_data, and_recognizer=False, stop=None):
+    all_TPs, all_FNs, all_FPs = defaultdict(int), defaultdict(int), defaultdict(int)
     i = 0
     for im_path, ann_path in test_data:
         image = cv2.imread(im_path)
         assert(image is not None), f"Cannot read {im_path}"
         objects = parse_annotation(ann_path)
-        boxes = detector(image)
-        TPs, FNs, FPs = compare(boxes, objects)
-        detections += len(boxes)
-        for gt_obj in objects:
-            all_gt_objects[gt_obj['label']] += 1
+        detections = detector(image)
+        if not and_recognizer:
+            detections = [{'box':b, 'label':None, 'score':None} for b in detections]
+        TPs, FNs, FPs = compare(detections, objects)
         for label in TPs.keys():
             all_TPs[label] += TPs[label]
             all_FNs[label] += FNs[label]
-        all_FPs += FPs
+        for label in FPs.keys():
+            all_FPs[label] += FPs[label]
         i += 1
-
-        if i > 100: break
+        if stop and i > stop: break
     
     pres, recs, f1ss = defaultdict(int), defaultdict(int), defaultdict(int)
-    for label in all_TPs.keys():
-        pres[label], recs[label], f1ss[label] = pre_rec_f1s(all_TPs[label], all_FNs[label],
-                                                            all_FPs, detections, all_gt_objects[label])
-    i_pre, i_rec, i_f1s = pre_rec_f1s(sum(all_TPs.values()), sum(all_FNs.values()),
-                                      all_FPs, detections, sum(all_gt_objects.values()))
+    for label, fps in all_FPs.items():
+        tps = all_TPs[label] if label in all_TPs else sum(all_TPs.values())
+        fns = all_FNs[label] if label in all_FNs else sum(all_FNs.values())
+        detections_amount = tps + fps
+        gt_objects_amount = tps + fns
+        pres[label], recs[label], f1ss[label] = pre_rec_f1s(tps, fns, fps)
+    tps = sum(all_TPs.values())
+    fns = sum(all_FNs.values())
+    fps = sum(all_FPs.values())
+    i_pre, i_rec, i_f1s = pre_rec_f1s(tps, fns, fps)
     stats = {}
     stats['per_label'] = (pres, recs, f1ss)
     stats['integral'] = (i_pre, i_rec, i_f1s)
     results = (all_TPs, all_FNs, all_FPs)
     return stats, results
-    
-def pre_rec_f1s(tps, fns, fps, all_dets, gt_positives):
+
+def pre_rec_f1s(tps, fns, fps):
+    all_dets = tps + fps
+    gt_positives = tps + fns
     pre = tps / float(all_dets) if all_dets > 0 else None
     rec = tps / float(gt_positives) if gt_positives > 0 else None
     f1s = 2. * pre * rec / (pre + rec) if pre and rec else None
@@ -100,6 +107,8 @@ def parse_args():
                         help='Folder annotations')
     parser.add_argument('-dm','--detector_models', type=str, nargs='+',
                         help='Detector model file(-s)')
+    parser.add_argument('-cm','--classifier_model', type=str, default=None,
+                        help="Specify classifier model to evaluate the whole pipeline")
     parser.add_argument('-o', '--output', type=str, default=None,
                         help="Where to store montages for analysis")
     return parser.parse_args()
@@ -110,16 +119,21 @@ def main(args):
     test_data = [[im_path, annotations[name]] for name, im_path in image_files.items() if name in annotations]
     
     opencv_model = False # args.detector_models.endswith('.xml')
-    detector = Detector(args.detector_models, opencv_model, resize_factor=2.)
-    stats, results = evaluate_detector(detector, test_data)
+    stop = None
+    if args.classifier_model:
+        detector = DigitsDetector(args.detector_models, args.classifier_model)
+        stats, results = evaluate_detector(detector, test_data, True, stop)
+    else:
+        detector = Detector(args.detector_models, opencv_model, resize_factor=2.)
+        stats, results = evaluate_detector(detector, test_data, False, stop)
     #  print stats
-    #print("--- 'per_label' ---")
-    #metrics = stats['per_label']
-    #for label in metrics[0].keys():
-    #    print(f"{label}\tprecision: {metrics[0][label]}, recall: {metrics[1][label]}, f1 score: {metrics[2][label]}")
+    print("--- 'per_label' ---")
+    metrics = stats['per_label']
+    for label in metrics[0].keys():
+        print(f"{label}\tprecision: {round(metrics[0][label],3)}, recall: {round(metrics[1][label],3)}, f1 score: {round(metrics[2][label],3)}")
     print("--- 'integral' ---")
     metrics = stats['integral']
-    print(f"precision: {metrics[0]}, recall: {metrics[1]}, f1 score: {metrics[2]}")
+    print(f"precision: {round(metrics[0],3)}, recall: {round(metrics[1],3)}, f1 score: {round(metrics[2],3)}")
 
 if __name__ == "__main__":
     main(parse_args())
