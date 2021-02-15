@@ -1,7 +1,9 @@
 __author__ = "Alexey Antonenko, vedrusss@gmail.com"
 
 import argparse
+import os
 import cv2
+import numpy as np
 from utilities import get_base_name, show_results_break
 from PIL import Image, ImageDraw
 import dlib
@@ -64,32 +66,44 @@ def annotate_detection(im, regions, color=128):
 def crop_detection(im, regions):
     return [im.crop((x, y, x+w, y+h)) for (x, y, w, h) in regions]
 
-def train(images, model):
-    return
-
-def test(images, model, display):  
-    detector = Detector(model)
-    for image_fn in images:
-        #print(image_fn)
-        label = get_base_name(image_fn)
-        np_image = cv2.imread(image_fn)
-        assert(np_image is not None),f"Cannot read image {image_fn}"
-        digit_regions = detector(np_image)
-        print(label, digit_regions)
-        if display:
-            if show_results_break(np_image, digit_regions): break
+def parse_filename(filename):
+    name = os.path.split(filename)[-1].split('.')[0]
+    if 'score' in filename or 'shotclock' in filename:
+        return name.split('_')[0]
+    if 'colon' in name or 'dot' in name:
+        name = name.split('_')[0]
+        name = name.replace('colon',':').replace('dot','.')
+    else:
+        name = ' '.join(name.split('_')[:2])
+    return name
 
 def parse_args():
     parser = argparse.ArgumentParser("Digits detector")
     parser.add_argument('-i', '--images', type=str, nargs='+', help='Images to test/train on')
-    parser.add_argument('-m', '--model',  type=str, required=True, help='Model path to load/save')
-    parser.add_argument('-t', '--train', action='store_true', help='Run training (test by default)')
+    parser.add_argument('-m', '--model',  type=str, nargs='+', required=True, help='Model path(-s) to load/save')
     parser.add_argument('-d', '--display', action='store_true', help='Display test results')
+    parser.add_argument('-is', '--ignore_signs', action='store_true', help="Ignore colons and dots")
     return parser.parse_args()
 
 if __name__ == '__main__':
     args = parse_args()
-    if args.train:
-        train(args.images, args.model)
-    else:
-        test(args.images, args.model, args.display)    
+
+    detector = Detector(args.model, opencv=False, resize_factor=3.) #2.1)
+    TPs, FPs = 0, 0
+    for image_fn in args.images:
+        name = parse_filename(image_fn)
+        if args.ignore_signs: name = name.replace(':','').replace('.','').replace(' ','')
+        objects_amount = 1 # len(name)
+        np_image = cv2.imread(image_fn)
+        assert(np_image is not None),f"Cannot read image {image_fn}"
+        image = np.zeros_like(np_image)
+        image = cv2.resize(image, dsize=(24,48)) #, fx=1.3, fy=1.3)
+        image[2:np_image.shape[0]+2,1:np_image.shape[1]+1,:] = np_image
+        digit_regions = detector(image)
+        if len(digit_regions) == objects_amount: TPs += 1
+        else: FPs += 1
+        print(f"{name} --> {len(digit_regions)}")
+        if args.display:
+            if show_results_break(np_image, digit_regions): break
+    TPrate = TPs / float(TPs + FPs) if TPs+FPs>0 else None
+    print(f"Results: TP rate {TPrate}, TPs {TPs}, FP {FPs}")    

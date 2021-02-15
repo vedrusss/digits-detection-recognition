@@ -138,7 +138,7 @@ class Recognizer:
 if __name__ == '__main__':
     import sys
 
-    use_trained = False
+    use_trained = True
     data_stats = True
     keep_aspect_ratio = False
 
@@ -149,16 +149,14 @@ if __name__ == '__main__':
                  4: {'train_lst':'train_12345empty', 'test_lst':'test_12345empty'}}
         
         chosen_case = 1
-        framework = "snn" #  "opencv" "sk" "snn" "cnn"
-        data_root = '/data/tasks/ocr_pipeline/calculator_font/digits_and_signs/digits_only'
-        data_name = os.path.split(data_root)[-1]
+        framework = "cnn" #  "opencv" "sk" "snn" "cnn"
+        train_data_root = '/data/tasks/ocr_pipeline/calculator_font/digits_and_signs/dataset_11022021/train_detection/raw_data'
+        test_data_root =  '/data/tasks/ocr_pipeline/calculator_font/digits_and_signs/test_detection/raw_data'
+        data_name = os.path.split(train_data_root)[-1]
         train_lst, test_lst = cases[chosen_case]['train_lst'], cases[chosen_case]['test_lst']
         
-        train_dir, test_dir = train_lst.split('_')[0], test_lst.split('_')[0]
-        train_data_root = f'{data_root}/{train_dir}'
-        test_data_root = f'{data_root}/{test_dir}'
-        train_data_lst = f'{data_root}/{train_lst}.lst'
-        test_data_lst = f'{data_root}/{test_lst}.lst'
+        train_data_lst = f'{train_data_root}/../{train_lst}.lst'
+        test_data_lst = f'{test_data_root}/../{test_lst}.lst'
         model_path = f'digits_{framework}_{train_lst}_{data_name}'
         if framework == 'cnn': model_path += '.pth'
         else: model_path += '.pkl'
@@ -187,12 +185,12 @@ if __name__ == '__main__':
     print("Mapping id to label:", rec.mapping_to_labels)
 
     print("Evaluation against TRAIN set")
-    predictions = [rec.mapping_to_labels[id] for id in rec.predict(images)]
+    predictions = [rec.mapping_to_labels[res[0]] for res in rec.predict(images)]
     evaluate_classifier(predictions, labels)
 
     #  Load test data and test the model
     test_files, test_labels = data.load_data(data_lst=test_data_lst, data_root=test_data_root, verbose=data_stats)
     test_images = [data.prepare_image(fn, SAMPLE_SIZE, keep_aspect_ratio) for fn in test_files]
     print("Evaluation against TEST set")
-    predictions = [rec.mapping_to_labels[id] for id in rec.predict(test_images)]
+    predictions = [rec.mapping_to_labels[res[0]] for res in rec.predict(test_images)]
     evaluate_classifier(predictions, test_labels, False)
