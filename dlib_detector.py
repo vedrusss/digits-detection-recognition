@@ -45,10 +45,14 @@ def train(images, boxes, filename):
     # Set the c parameter of SVM equal to 5
     # A bigger C encourages the model to better fit the training data, it can lead to overfitting.
     # So set an optimal C value via trail and error.
-    options.C = 0.1
+    options.C = 300 #0.1
 
-    options.num_threads = 1
-    options.be_verbose = True
+    options.epsilon = 0.0001
+
+    #options.upsample_limit = 2
+
+    options.num_threads = 4
+    options.be_verbose = False
     #options.detection_window_size = 1152
     
     # You can start the training now
