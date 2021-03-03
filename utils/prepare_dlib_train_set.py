@@ -93,6 +93,9 @@ def parse_args():
     parser.add_argument('-s', '--size', type=int, default=400, help="Minimal size of positive area")
     parser.add_argument('-l', '--label', type=str, required=True, help="Label of interest")
     parser.add_argument('-o', '--output', type=str, required=True, help="Folder to images to")
+    parser.add_argument('-ta','--target_aspect_ratio', action='store_true',
+                        help="Calculate aspect ratio only using target labels")
+    parser.add_argument('-ar','--aspect_ratio', type=float, default=None, help="Specify aspect ratio")
     return parser.parse_args()
 
 def main(args):
@@ -106,10 +109,18 @@ def main(args):
     amount = args.num_images
     amount_per_image = args.amount
 
-    target_foreground = foregrounds[args.label]
-    aspect_ratios = get_aspect_ratios(target_foreground)
-    assert(len(aspect_ratios)),f"No aspect ratios found for pathes: {target_foreground}"
-    mean_ar = round(sum(aspect_ratios) / float(len(aspect_ratios)), 2)
+    if args.aspect_ratio:
+        mean_ar = args.aspect_ratio
+    else:
+        if args.target_aspect_ratio:
+            target_foreground = foregrounds[args.label]
+        else:
+            target_foreground = {}
+            for _, v in foregrounds.items():
+                target_foreground.update(v)
+        aspect_ratios = get_aspect_ratios(target_foreground)
+        assert(len(aspect_ratios)), f"No aspect ratios found for pathes: {target_foreground}"
+        mean_ar = round(sum(aspect_ratios) / float(len(aspect_ratios)), 2)
 
     while amount > 0:
         foreground_images, max_size = pick_up_read_set(foregrounds, args.label, amount_per_image, mean_ar, args.size)
@@ -130,7 +141,7 @@ def main(args):
         cv2.imwrite(dst_img_path, background_image)
         locations = {'objects': [{'label': l[0], 'box': l[1]} for l in locations if l[0] == args.label]}
         json.dump(locations, open(dst_ann_path, 'w'))
-        print(f"Created {base_name(dst_img_path)} + {base_name(dst_ann_path)}\t{amount} left")
+        print(f"Created {base_name(dst_img_path)} + {base_name(dst_ann_path)}\t{amount} left (mean AR {mean_ar})")
         amount -= 1
 
 if __name__ == "__main__":
